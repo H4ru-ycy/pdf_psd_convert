@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PDF→PSD一括変換</title>
+<meta name="description" content="PDFの各ページをPSD（Photoshop形式）に変換する無料のブラウザツール。複数ファイルをまとめて変換でき、ファイルは外部に送信されません。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
+<style>
+/* Layout: 1カラムの作業台。上に投入口、設定、ファイル一覧、下部に固定の操作バー */
+:root{
+  --bg:#eceff4;
+  --surface:#ffffff;
+  --sunken:#f4f6f9;
+  --ink:#1b2231;
+  --muted:#5a6476;
+  --line:#d3d9e3;
+  --accent:#2b44b8;
+  --accent-ink:#ffffff;
+  --accent-soft:#e3e8fb;
+  --ok:#1d7f55;
+  --ok-soft:#dff3ea;
+  --err:#b93434;
+  --err-soft:#f9e3e3;
+  --font-display:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
+  --font-body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic","Meiryo",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --radius:12px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11141b;--surface:#1a1f29;--sunken:#151922;--ink:#e5e9f0;--muted:#98a2b4;--line:#2b3240;
+    --accent:#8a9dff;--accent-ink:#0f1430;--accent-soft:#232c52;--ok:#5fcf9b;--ok-soft:#173528;--err:#f08a8a;--err-soft:#3a1c1e;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11141b;--surface:#1a1f29;--sunken:#151922;--ink:#e5e9f0;--muted:#98a2b4;--line:#2b3240;
+  --accent:#8a9dff;--accent-ink:#0f1430;--accent-soft:#232c52;--ok:#5fcf9b;--ok-soft:#173528;--err:#f08a8a;--err-soft:#3a1c1e;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.7;padding:env(safe-area-inset-top,0px) 16px 0}
+.wrap{max-width:760px;margin:0 auto;padding-block:28px 140px;display:flex;flex-direction:column;gap:20px}
+h1,h2{font-family:var(--font-display);text-wrap:balance;margin:0;line-height:1.3}
+h1{font-size:clamp(1.6rem,5vw,2.1rem);font-weight:900;letter-spacing:.01em}
+h1 .arrow{color:var(--accent)}
+h2{font-size:1rem;font-weight:700}
+.lead{margin:6px 0 0;color:var(--muted);max-width:60ch}
+.ver{font-family:var(--font-mono);font-size:.75rem;color:var(--muted);letter-spacing:.04em}
+header{display:flex;flex-direction:column;gap:4px}
+
+.drop{position:relative;border:2px dashed var(--line);border-radius:var(--radius);background:var(--surface);padding:28px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;transition:border-color .15s,background .15s}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop svg{width:44px;height:44px;color:var(--accent)}
+.drop p{margin:0}
+.drop .small{font-size:.82rem;color:var(--muted)}
+.btn{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-weight:700;font-size:.92rem;border-radius:10px;padding:10px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-height:44px;justify-content:center}
+.btn:hover{border-color:var(--accent)}
+.btn:focus-visible,.seg input:focus-visible+span,select:focus-visible,input[type=number]:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.sm{min-height:36px;padding:6px 12px;font-size:.84rem}
+.btn.ghost{background:transparent}
+#fileInput{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;display:flex;flex-direction:column;gap:16px}
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px 20px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.label{font-size:.78rem;font-weight:700;color:var(--muted);letter-spacing:.06em}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg label{position:relative;cursor:pointer}
+.seg input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.seg span{display:inline-flex;align-items:center;min-height:38px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;font-size:.86rem;background:var(--sunken);white-space:nowrap}
+.seg input:checked+span{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.seg input:disabled+span{opacity:.5}
+.dpirow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+input[type=number]{font:inherit;font-family:var(--font-mono);width:6.5em;padding:6px 10px;min-height:38px;border:1px solid var(--line);border-radius:8px;background:var(--sunken);color:var(--ink)}
+.hint{font-size:.8rem;color:var(--muted);margin:0}
+.cmykopt{display:flex;flex-direction:column;gap:8px;margin-top:4px;padding:12px;border-radius:10px;background:var(--sunken);border:1px solid var(--line)}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:.88rem;cursor:pointer}
+.check input{width:20px;height:20px;margin:2px 0 0;accent-color:var(--accent);flex:none}
+
+.listhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.count{font-family:var(--font-mono);font-size:.82rem;color:var(--muted)}
+.list{display:flex;flex-direction:column;gap:10px;list-style:none;margin:0;padding:0}
+.empty{color:var(--muted);font-size:.9rem;text-align:center;padding:18px 8px;border-radius:10px;background:var(--sunken);margin:0}
+.item{display:grid;grid-template-columns:56px 1fr;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--sunken);align-items:start}
+.thumb{width:56px;height:76px;border-radius:4px;background:var(--surface);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.thumb canvas{max-width:100%;max-height:100%;display:block}
+.info{min-width:0;display:flex;flex-direction:column;gap:6px}
+.name{font-weight:700;overflow-wrap:anywhere;line-height:1.4}
+.meta{font-family:var(--font-mono);font-size:.76rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px;font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:.74rem;font-weight:700;padding:2px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line);color:var(--muted);width:fit-content}
+.chip.run{background:var(--accent-soft);border-color:transparent;color:var(--accent)}
+.chip.done{background:var(--ok-soft);border-color:transparent;color:var(--ok)}
+.chip.err{background:var(--err-soft);border-color:transparent;color:var(--err)}
+.bar{height:6px;border-radius:999px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.item.done .bar i{background:var(--ok)}
+.actions{display:flex;flex-wrap:wrap;gap:6px}
+.note{font-size:.78rem;color:var(--muted);margin:0}
+.note.err{color:var(--err)}
+
+.dock{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));z-index:10}
+.dock .in{max-width:760px;margin:0 auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dock .grow{flex:1 1 auto}
+.dock .status{font-size:.82rem;color:var(--muted);flex:1 1 100%;margin:0;font-variant-numeric:tabular-nums}
+@media (min-width:600px){.dock .status{flex:1 1 auto}}
+
+details{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:4px 18px}
+summary{cursor:pointer;font-weight:700;padding:12px 0;font-family:var(--font-display)}
+details ul{margin:0 0 14px;padding-left:1.2em;color:var(--muted);font-size:.9rem}
+details li+li{margin-top:4px}
+.log{font-size:.88rem;color:var(--muted);margin:0 0 14px}
+.log dt{font-family:var(--font-mono);font-weight:500;color:var(--ink)}
+.log dd{margin:0 0 8px}
+footer{font-size:.82rem;color:var(--muted);text-align:center;display:flex;flex-direction:column;gap:2px}
+footer a{color:var(--accent)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="ver">v1.1.0</span>
+    <h1>PDF <span class="arrow">→</span> PSD 一括変換</h1>
+    <p class="lead">PDFの各ページを画像にして、Photoshop形式（.psd）で保存します。複数のPDFをまとめて変換できます。ファイルはこの端末の中だけで処理され、どこにも送信されません。</p>
+  </header>
+
+  <label class="drop" id="drop" for="fileInput">
+    <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M28 6H12a3 3 0 0 0-3 3v30a3 3 0 0 0 3 3h24a3 3 0 0 0 3-3V17z"/><path d="M28 6v11h11"/><path d="M24 36V23"/><path d="m18.5 28.5 5.5-5.5 5.5 5.5"/></svg>
+    <p><strong>PDFを選ぶ</strong>　またはここにドラッグ</p>
+    <p class="small">複数選択できます。Googleドライブ・Dropboxのファイルは、一度端末に保存してから選んでください。</p>
+    <input type="file" id="fileInput" accept="application/pdf,.pdf" multiple>
+  </label>
+
+  <section class="panel" aria-labelledby="setTitle">
+    <h2 id="setTitle">変換の設定</h2>
+    <div class="settings">
+      <div class="field">
+        <span class="label">解像度</span>
+        <div class="seg" role="radiogroup" aria-label="解像度">
+          <label><input type="radio" name="dpi" value="150" id="dpi150"><span>150 dpi</span></label>
+          <label><input type="radio" name="dpi" value="300" id="dpi300"><span>300 dpi</span></label>
+          <label><input type="radio" name="dpi" value="350" id="dpi350" checked><span>350 dpi</span></label>
+          <label><input type="radio" name="dpi" value="600" id="dpi600"><span>600 dpi</span></label>
+          <label><input type="radio" name="dpi" value="custom" id="dpiCustom"><span>指定</span></label>
+        </div>
+        <div class="dpirow" id="customRow" hidden>
+          <input type="number" id="dpiValue" min="36" max="1200" step="1" value="400" aria-label="解像度（dpi）"><span class="hint">dpi（36〜1200）</span>
+        </div>
+        <p class="hint">印刷用は350 dpi、モノクロ線画は600 dpiが目安です。</p>
+      </div>
+      <div class="field">
+        <span class="label">カラー</span>
+        <div class="seg">
+          <label><input type="radio" name="color" value="rgb" id="colRgb" checked><span>RGBカラー</span></label>
+          <label><input type="radio" name="color" value="cmyk" id="colCmyk"><span>CMYKカラー</span></label>
+          <label><input type="radio" name="color" value="gray" id="colGray"><span>グレースケール</span></label>
+        </div>
+        <div class="cmykopt" id="cmykOpt" hidden>
+          <label class="check"><input type="checkbox" id="kOnly" checked><span>黒・グレーはK版のみ（スミ1色）にする</span></label>
+          <span class="label">総インキ量の上限</span>
+          <div class="seg">
+            <label><input type="radio" name="tac" value="250" id="tac250"><span>250%</span></label>
+            <label><input type="radio" name="tac" value="300" id="tac300" checked><span>300%</span></label>
+            <label><input type="radio" name="tac" value="350" id="tac350"><span>350%</span></label>
+          </div>
+          <p class="hint">印刷所の入稿ルールに合わせてください。文字や線画の黒はK100%になります。</p>
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">背景</span>
+        <div class="seg">
+          <label><input type="radio" name="bg" value="white" id="bgWhite" checked><span>白</span></label>
+          <label><input type="radio" name="bg" value="transparent" id="bgClear"><span>透明</span></label>
+        </div>
+        <p class="hint">透明にすると、文字や絵だけのレイヤーになります。</p>
+      </div>
+      <div class="field">
+        <span class="label">書き出し方</span>
+        <div class="seg">
+          <label><input type="radio" name="layout" value="pages" id="layPages" checked><span>1ページ＝1ファイル</span></label>
+          <label><input type="radio" name="layout" value="layers" id="layLayers"><span>全ページを1ファイルにレイヤーで</span></label>
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">同時に変換するファイル数</span>
+        <div class="seg">
+          <label><input type="radio" name="conc" value="1" id="conc1"><span>1</span></label>
+          <label><input type="radio" name="conc" value="2" id="conc2" checked><span>2</span></label>
+          <label><input type="radio" name="conc" value="3" id="conc3"><span>3</span></label>
+        </div>
+        <p class="hint">スマホで止まるときは1にしてください。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="listTitle">
+    <div class="listhead">
+      <h2 id="listTitle">ファイル</h2>
+      <span class="count" id="count">0件</span>
+    </div>
+    <p class="empty" id="empty">まだPDFがありません。上から追加すると、ここにページ数と仕上がりサイズが表示されます。</p>
+    <ul class="list" id="list"></ul>
+  </section>
+
+  <details>
+    <summary>使い方と注意</summary>
+    <ul>
+      <li>PDFを追加して設定を選び、「すべて変換」を押します。終わったファイルから保存できます。</li>
+      <li>ページが複数あるときは、ページごとのPSDをZIPにまとめて保存します。</li>
+      <li>文字や図形は画像（ラスター）になります。PSD上で文字の打ち直しはできません。</li>
+      <li>CMYKを選ぶと、Photoshopで開いたときに最初からCMYKモードのPSDになります。ブラウザ内の計算による色分解なので、鮮やかな色は印刷所の指定プロファイル（Japan Color 2001 Coatedなど）で変換した場合と少し違うことがあります。色の厳密さが必要なときは、RGBで書き出してPhotoshopで変換してください。</li>
+      <li>「黒・グレーはK版のみ」にすると、モノクロ原稿や文字の黒がK100%（スミ1色）になり、版ずれしにくくなります。</li>
+      <li>スマホ・タブレットは一度に扱える画像の大きさに上限があるため、大きすぎるページは自動で少し縮めて変換します（ファイルの行に表示されます）。</li>
+      <li>「全ページを1ファイルにレイヤーで」は、1ページ目のみ表示、他のページは非表示レイヤーとして入ります。</li>
+    </ul>
+  </details>
+
+  <details>
+    <summary>更新履歴</summary>
+    <dl class="log">
+      <dt>v1.1.0（2026-10-05）</dt>
+      <dd>CMYKモードのPSD書き出しに対応。黒・グレーのK版のみ化と、総インキ量の上限（250／300／350%）を選べるように。</dd>
+      <dt>v1.0.0（2026-10-05）</dt>
+      <dd>公開。複数PDFの一括変換、解像度・カラー・背景・書き出し方の選択、ZIP保存に対応。</dd>
+    </dl>
+  </details>
+
+  <footer>
+    <span>お問い合わせ：X <a href="https://x.com/H4ru_ycy" target="_blank" rel="noopener">@H4ru_ycy</a></span>
+    <span class="ver">PDF→PSD一括変換 v1.1.0</span>
+  </footer>
+</div>
+
+<div class="dock">
+  <div class="in">
+    <p class="status" id="status" aria-live="polite">PDFを追加してください</p>
+    <button class="btn primary" id="runAll" disabled>すべて変換</button>
+    <button class="btn" id="saveAll" disabled>まとめてZIP保存</button>
+    <button class="btn ghost" id="clearAll" disabled>クリア</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+// PSD-WRITER-START
+/* ---- PSD 書き出し（RLE圧縮・レイヤー付き） ---- */
+function packRow(src, off, step, n, out, o0){
+  let o = o0, i = 0;
+  while(i < n){
+    const v = src[off + i*step];
+    let r = 1;
+    while(i + r < n && r < 128 && src[off + (i+r)*step] === v) r++;
+    if(r >= 3){ out[o++] = 257 - r; out[o++] = v; i += r; continue; }
+    const s = i;
+    while(i < n && i - s < 128){
+      if(i + 2 < n){
+        const a = src[off + i*step];
+        if(a === src[off + (i+1)*step] && a === src[off + (i+2)*step]) break;
+      }
+      i++;
+    }
+    out[o++] = i - s - 1;
+    for(let k = s; k < i; k++) out[o++] = src[off + k*step];
+  }
+  return o - o0;
+}
+function encodeChannel(src, off, step, w, h){
+  const out = new Uint8Array(h * (w + Math.ceil(w/128) + 2));
+  const counts = new Uint8Array(h*2);
+  let o = 0;
+  for(let y = 0; y < h; y++){
+    const len = packRow(src, off + y*w*step, step, w, out, o);
+    counts[y*2] = len >> 8; counts[y*2+1] = len & 255; o += len;
+  }
+  return {counts, data: out.slice(0, o)};
+}
+/* 色分解。PSDに保存する形のチャンネル（CMYKはPSDの仕様どおり反転：255＝インキなし）を返す
+   color: {mode:'rgb'|'gray'|'cmyk', kOnly:bool, tac:300 等} */
+function makeCmykLut(){
+  // 墨版生成（GCR）：CMYの共通成分のうち、暗い部分ほど多くをK版に置き換える
+  const lut = new Float32Array(256);
+  for(let i = 0; i < 256; i++){
+    const x = i/255;
+    lut[i] = x <= 0.2 ? 0 : 0.95 * Math.pow((x - 0.2)/0.8, 1.15) * Math.min(1, x/0.999);
+  }
+  return lut;
+}
+const GCR_LUT = makeCmykLut();
+function colorPlanes(rgba, n, color){
+  if(color.mode === 'rgb'){
+    const P = [new Uint8Array(n), new Uint8Array(n), new Uint8Array(n)];
+    for(let i = 0, j = 0; i < n; i++, j += 4){ P[0][i] = rgba[j]; P[1][i] = rgba[j+1]; P[2][i] = rgba[j+2]; }
+    return P;
+  }
+  if(color.mode === 'gray'){
+    const g = new Uint8Array(n);
+    for(let i = 0, j = 0; i < n; i++, j += 4) g[i] = (rgba[j]*77 + rgba[j+1]*150 + rgba[j+2]*29 + 128) >> 8;
+    return [g];
+  }
+  // CMYK
+  const C = new Uint8Array(n), M = new Uint8Array(n), Y = new Uint8Array(n), K = new Uint8Array(n);
+  const tac = (color.tac || 300) / 100, kOnly = color.kOnly;
+  const cache = new Map();
+  for(let i = 0, j = 0; i < n; i++, j += 4){
+    const r = rgba[j], g = rgba[j+1], b = rgba[j+2];
+    const key = (r << 16) | (g << 8) | b;
+    let v = cache.get(key);
+    if(v === undefined){
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      if(kOnly && mx - mn <= 2){
+        // 無彩色はK版のみ（スミ1色）
+        v = (255 << 24) | (255 << 16) | (255 << 8) | ((r + g + b) / 3 + 0.5 | 0);
+      }else{
+        let c = 1 - r/255, m = 1 - g/255, y = 1 - b/255;
+        const k = GCR_LUT[255 - mx];
+        if(k < 1){ c = (c - k)/(1 - k); m = (m - k)/(1 - k); y = (y - k)/(1 - k); } else { c = m = y = 0; }
+        c = Math.max(0, c); m = Math.max(0, m); y = Math.max(0, y);
+        const sum = c + m + y + k;
+        if(sum > tac){ const f = Math.max(0, tac - k) / (c + m + y); c *= f; m *= f; y *= f; }
+        const inv = t => 255 - Math.round(t*255);
+        v = (inv(c) << 24) | (inv(m) << 16) | (inv(y) << 8) | inv(k);
+      }
+      if(cache.size < 200000) cache.set(key, v);
+    }
+    C[i] = v >>> 24; M[i] = (v >>> 16) & 255; Y[i] = (v >>> 8) & 255; K[i] = v & 255;
+  }
+  return [C, M, Y, K];
+}
+/* レイヤー用チャンネル（α + 色） */
+function encodeLayer(rgba, planes, w, h){
+  const ch = [{id:-1, ...encodeChannel(rgba, 3, 4, w, h)}];
+  planes.forEach((pl, c) => ch.push({id:c, ...encodeChannel(pl, 0, 1, w, h)}));
+  return ch;
+}
+/* 統合画像（白でマット処理）W×H のキャンバス左上に配置。どのモードでも255＝白 */
+function encodeComposite(rgba, planes, w, h, W, H, transparent){
+  const res = [];
+  const plane = new Uint8Array(W*H);
+  for(const src of planes){
+    plane.fill(255);
+    for(let y = 0; y < h; y++){
+      for(let x = 0; x < w; x++){
+        const p = y*w + x, a = rgba[p*4+3];
+        plane[y*W + x] = (src[p]*a + 255*(255-a) + 127) / 255 | 0;
+      }
+    }
+    res.push(encodeChannel(plane, 0, 1, W, H));
+  }
+  if(transparent){
+    plane.fill(0);
+    for(let y = 0; y < h; y++) for(let x = 0; x < w; x++) plane[y*W + x] = rgba[(y*w + x)*4 + 3];
+    res.push(encodeChannel(plane, 0, 1, W, H));
+  }
+  return res;
+}
+class BW{
+  constructor(){ this.parts = []; this.buf = []; this.len = 0; }
+  u8(v){ this.buf.push(v & 255); this.len++; }
+  u16(v){ this.u8(v >> 8); this.u8(v); }
+  u32(v){ this.u8(v >>> 24); this.u8(v >>> 16); this.u8(v >>> 8); this.u8(v); }
+  str(s){ for(let i = 0; i < s.length; i++) this.u8(s.charCodeAt(i)); }
+  flush(){ if(this.buf.length){ this.parts.push(new Uint8Array(this.buf)); this.buf = []; } }
+  raw(a){ this.flush(); this.parts.push(a); this.len += a.length; }
+  append(w){ w.flush(); this.flush(); for(const p of w.parts) this.parts.push(p); this.len += w.len; }
+  pad(m){ while(this.len % m) this.u8(0); }
+  done(){ this.flush(); return this.parts; }
+}
+/* opts: {W,H,mode,transparent,dpi,layers:[{name,ascii,w,h,channels,hidden}],composite} */
+function buildPSD(o){
+  const nColor = {rgb:3, gray:1, cmyk:4}[o.mode];
+  const modeId = {rgb:3, gray:1, cmyk:4}[o.mode];
+  const f = new BW();
+  // ヘッダー
+  f.str('8BPS'); f.u16(1); for(let i = 0; i < 6; i++) f.u8(0);
+  f.u16(nColor + (o.transparent ? 1 : 0)); f.u32(o.H); f.u32(o.W); f.u16(8); f.u16(modeId);
+  f.u32(0); // カラーモードデータ
+  // 画像リソース：解像度
+  const dpiFx = Math.round(o.dpi * 65536);
+  f.u32(28); f.str('8BIM'); f.u16(0x03ED); f.u16(0); f.u32(16);
+  f.u32(dpiFx); f.u16(1); f.u16(1); f.u32(dpiFx); f.u16(1); f.u16(1);
+  // レイヤー情報
+  const li = new BW();
+  const recs = o.layers.slice().reverse(); // 下から順
+  li.u16(o.transparent ? (65536 - recs.length) : recs.length);
+  for(const L of recs){
+    li.u32(0); li.u32(0); li.u32(L.h); li.u32(L.w);
+    li.u16(L.channels.length);
+    for(const c of L.channels){ li.u16(c.id & 0xffff); li.u32(2 + c.counts.length + c.data.length); }
+    li.str('8BIM'); li.str('norm'); li.u8(255); li.u8(0); li.u8(L.hidden ? 2 : 0); li.u8(0);
+    const ex = new BW();
+    ex.u32(0); ex.u32(0);
+    const ascii = L.ascii.slice(0, 255);
+    ex.u8(ascii.length); ex.str(ascii); ex.pad(4);
+    ex.str('8BIM'); ex.str('luni'); ex.u32(4 + L.name.length*2); ex.u32(L.name.length);
+    for(let i = 0; i < L.name.length; i++) ex.u16(L.name.charCodeAt(i));
+    ex.pad(2);
+    li.u32(ex.len); li.append(ex);
+  }
+  for(const L of recs){
+    for(const c of L.channels){ li.u16(1); li.raw(c.counts); li.raw(c.data); }
+  }
+  li.pad(4);
+  f.u32(4 + li.len + 4);
+  f.u32(li.len); f.append(li);
+  f.u32(0); // グローバルマスク
+  // 統合画像
+  f.u16(1);
+  for(const c of o.composite) f.raw(c.counts);
+  for(const c of o.composite) f.raw(c.data);
+  return f.done();
+}
+// PSD-WRITER-END
+
+/* ---- アプリ本体 ---- */
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js';
+const MAX_AREA = 16000000;   // スマホのキャンバス上限に余裕を持たせた値
+const MAX_SIDE = 16000;
+
+const $ = s => document.querySelector(s);
+const listEl = $('#list'), emptyEl = $('#empty'), countEl = $('#count'), statusEl = $('#status');
+const runBtn = $('#runAll'), saveBtn = $('#saveAll'), clearBtn = $('#clearAll');
+let items = [], seq = 0, running = false;
+
+function opts(){
+  const v = document.querySelector('input[name=dpi]:checked').value;
+  let dpi = v === 'custom' ? parseInt($('#dpiValue').value, 10) : parseInt(v, 10);
+  if(!Number.isFinite(dpi)) dpi = 350;
+  dpi = Math.min(1200, Math.max(36, dpi));
+  return {
+    dpi,
+    color: {
+      mode: document.querySelector('input[name=color]:checked').value,
+      kOnly: $('#kOnly').checked,
+      tac: parseInt(document.querySelector('input[name=tac]:checked').value, 10)
+    },
+    transparent: document.querySelector('input[name=bg]:checked').value === 'transparent',
+    layout: document.querySelector('input[name=layout]:checked').value,
+    conc: parseInt(document.querySelector('input[name=conc]:checked').value, 10)
+  };
+}
+function colorLabel(c){ return c.mode === 'cmyk' ? `CMYK・総インキ${c.tac}%${c.kOnly ? '・黒はK版のみ' : ''}` : c.mode === 'gray' ? 'グレー' : 'RGB'; }
+function baseName(n){ return n.replace(/\.pdf$/i, '').replace(/[\\/:*?"<>|]/g, '_') || 'document'; }
+function fmtBytes(b){ return b < 1024*1024 ? (b/1024).toFixed(0) + ' KB' : (b/1024/1024).toFixed(1) + ' MB'; }
+function fitScale(wPt, hPt, dpi){
+  let s = dpi/72, w = wPt*s, h = hPt*s, clamped = false;
+  if(w*h > MAX_AREA){ s *= Math.sqrt(MAX_AREA/(w*h)); clamped = true; }
+  if(wPt*s > MAX_SIDE || hPt*s > MAX_SIDE){ s = Math.min(s, MAX_SIDE/Math.max(wPt, hPt)); clamped = true; }
+  return {s, w: Math.floor(wPt*s), h: Math.floor(hPt*s), clamped};
+}
+function saveBlob(blob, name){
+  const u = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 60000);
+}
+const tick = () => new Promise(r => setTimeout(r, 0));
+
+function addFiles(files){
+  for(const file of files){
+    if(!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') continue;
+    const it = {id: ++seq, file, status: 'idle', pages: null, size1: null, outputs: [], progress: 0, note: '', el: null};
+    items.push(it);
+    buildRow(it);
+    inspect(it);
+  }
+  refresh();
+}
+function buildRow(it){
+  const li = document.createElement('li');
+  li.className = 'item';
+  li.innerHTML = `<div class="thumb"><canvas></canvas></div>
+    <div class="info">
+      <div class="name"></div>
+      <div class="meta"><span class="m-size"></span><span class="m-pages"></span><span class="m-px"></span></div>
+      <span class="chip">待機中</span>
+      <div class="bar" aria-hidden="true"><i></i></div>
+      <p class="note" hidden></p>
+      <div class="actions">
+        <button class="btn sm primary a-save" hidden>保存</button>
+        <button class="btn sm a-run">変換</button>
+        <button class="btn sm ghost a-del">削除</button>
+      </div>
+    </div>`;
+  li.querySelector('.name').textContent = it.file.name;
+  li.querySelector('.m-size').textContent = fmtBytes(it.file.size);
+  li.querySelector('.a-save').onclick = () => saveItem(it);
+  li.querySelector('.a-run').onclick = () => { if(!running) runQueue([it]); };
+  li.querySelector('.a-del').onclick = () => {
+    if(it.status === 'run') return;
+    items = items.filter(x => x !== it); li.remove(); refresh();
+  };
+  it.el = li;
+  listEl.appendChild(li);
+}
+async function inspect(it){
+  try{
+    const pdf = await pdfjsLib.getDocument({data: await it.file.arrayBuffer(), cMapUrl: PDFJS + 'cmaps/', cMapPacked: true, standardFontDataUrl: PDFJS + 'standard_fonts/'}).promise;
+    it.pages = pdf.numPages;
+    const page = await pdf.getPage(1);
+    const vp1 = page.getViewport({scale: 1});
+    it.size1 = {w: vp1.width, h: vp1.height};
+    const c = it.el.querySelector('.thumb canvas');
+    const vp = page.getViewport({scale: 110 / Math.max(vp1.width, vp1.height)});
+    c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+    await page.render({canvasContext: c.getContext('2d'), viewport: vp}).promise;
+    pdf.destroy();
+  }catch(e){
+    it.status = 'error'; it.note = 'PDFを読み込めませんでした。パスワード付きや破損したファイルは変換できません。';
+  }
+  paint(it); refresh();
+}
+function paint(it){
+  const el = it.el; if(!el) return;
+  const o = opts();
+  el.querySelector('.m-pages').textContent = it.pages ? `${it.pages}ページ` : '';
+  if(it.size1){
+    const f = fitScale(it.size1.w, it.size1.h, o.dpi);
+    const mm = v => Math.round(v / 72 * 25.4);
+    el.querySelector('.m-px').textContent = `${mm(it.size1.w)}×${mm(it.size1.h)}mm → ${f.w}×${f.h}px` + (f.clamped ? '（縮小）' : '');
+  }
+  const chip = el.querySelector('.chip');
+  const label = {idle: '待機中', run: '変換中', done: '完了', error: 'エラー'}[it.status];
+  chip.className = 'chip' + ({run: ' run', done: ' done', error: ' err'}[it.status] || '');
+  chip.textContent = it.status === 'run' && it.pages ? `変換中 ${it.cur || 0}/${it.pages}` : label;
+  el.classList.toggle('done', it.status === 'done');
+  el.querySelector('.bar i').style.width = (it.status === 'done' ? 100 : it.progress*100) + '%';
+  const note = el.querySelector('.note');
+  note.hidden = !it.note; note.textContent = it.note; note.classList.toggle('err', it.status === 'error');
+  const save = el.querySelector('.a-save');
+  save.hidden = it.status !== 'done';
+  save.textContent = it.outputs.length > 1 ? `ZIPで保存（${it.outputs.length}ファイル）` : 'PSDを保存';
+  const run = el.querySelector('.a-run');
+  run.textContent = it.status === 'done' ? '再変換' : '変換';
+  run.disabled = running || !it.pages;
+  el.querySelector('.a-del').disabled = it.status === 'run';
+}
+function refresh(){
+  const n = items.length;
+  emptyEl.hidden = n > 0;
+  countEl.textContent = `${n}件`;
+  const done = items.filter(i => i.status === 'done').length;
+  const todo = items.filter(i => i.status === 'idle' && i.pages).length;
+  runBtn.disabled = running || todo === 0;
+  saveBtn.disabled = running || done === 0;
+  clearBtn.disabled = running || n === 0;
+  document.querySelectorAll('.settings input').forEach(i => i.disabled = running);
+  if(!running){
+    statusEl.textContent = n === 0 ? 'PDFを追加してください'
+      : todo ? `${todo}件が変換待ちです` : done ? `${done}件の変換が終わりました` : '変換できるファイルがありません';
+  }
+  items.forEach(paint);
+}
+
+async function renderPage(pdf, n, dpi, transparent){
+  const page = await pdf.getPage(n);
+  const vp1 = page.getViewport({scale: 1});
+  const f = fitScale(vp1.width, vp1.height, dpi);
+  const vp = page.getViewport({scale: f.s});
+  const canvas = document.createElement('canvas');
+  canvas.width = f.w; canvas.height = f.h;
+  const ctx = canvas.getContext('2d', {willReadFrequently: true});
+  if(!transparent){ ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, f.w, f.h); }
+  await page.render({canvasContext: ctx, viewport: vp, background: transparent ? 'rgba(0,0,0,0)' : '#ffffff'}).promise;
+  const data = ctx.getImageData(0, 0, f.w, f.h).data;
+  canvas.width = canvas.height = 0;
+  page.cleanup();
+  return {data, w: f.w, h: f.h, clamped: f.clamped};
+}
+
+async function convert(it){
+  const o = opts();
+  it.status = 'run'; it.outputs = []; it.progress = 0; it.cur = 0; it.note = ''; paint(it);
+  const base = baseName(it.file.name);
+  let pdf;
+  try{
+    pdf = await pdfjsLib.getDocument({data: await it.file.arrayBuffer(), cMapUrl: PDFJS + 'cmaps/', cMapPacked: true, standardFontDataUrl: PDFJS + 'standard_fonts/'}).promise;
+    const N = pdf.numPages, digits = Math.max(3, String(N).length);
+    let clamped = false;
+    if(o.layout === 'pages'){
+      for(let n = 1; n <= N; n++){
+        it.cur = n; paint(it); await tick();
+        const r = await renderPage(pdf, n, o.dpi, o.transparent);
+        clamped ||= r.clamped;
+        const name = `${n}ページ`;
+        const planes = colorPlanes(r.data, r.w*r.h, o.color);
+        const parts = buildPSD({W: r.w, H: r.h, mode: o.color.mode, transparent: o.transparent, dpi: o.dpi,
+          layers: [{name, ascii: `Page ${n}`, w: r.w, h: r.h, channels: encodeLayer(r.data, planes, r.w, r.h), hidden: false}],
+          composite: encodeComposite(r.data, planes, r.w, r.h, r.w, r.h, o.transparent)});
+        it.outputs.push({name: `${base}_p${String(n).padStart(digits, '0')}.psd`, blob: new Blob(parts, {type: 'image/vnd.adobe.photoshop'})});
+        it.progress = n / N; paint(it);
+      }
+    }else{
+      let W = 0, H = 0;
+      for(let n = 1; n <= N; n++){
+        const p = await pdf.getPage(n); const v = p.getViewport({scale: 1});
+        const f = fitScale(v.width, v.height, o.dpi); W = Math.max(W, f.w); H = Math.max(H, f.h);
+      }
+      const layers = []; let composite = null;
+      for(let n = 1; n <= N; n++){
+        it.cur = n; paint(it); await tick();
+        const r = await renderPage(pdf, n, o.dpi, o.transparent);
+        clamped ||= r.clamped;
+        const planes = colorPlanes(r.data, r.w*r.h, o.color);
+        layers.push({name: `${n}ページ`, ascii: `Page ${n}`, w: r.w, h: r.h, channels: encodeLayer(r.data, planes, r.w, r.h), hidden: n > 1});
+        if(n === 1) composite = encodeComposite(r.data, planes, r.w, r.h, W, H, o.transparent);
+        it.progress = n / N; paint(it);
+      }
+      const parts = buildPSD({W, H, mode: o.color.mode, transparent: o.transparent, dpi: o.dpi, layers, composite});
+      it.outputs.push({name: `${base}.psd`, blob: new Blob(parts, {type: 'image/vnd.adobe.photoshop'})});
+    }
+    const total = it.outputs.reduce((s, x) => s + x.blob.size, 0);
+    it.status = 'done';
+    it.note = `${it.outputs.length}ファイル・合計 ${fmtBytes(total)}（${o.dpi} dpi・${colorLabel(o.color)}・背景${o.transparent ? '透明' : '白'}）`
+      + (clamped ? '　※端末の上限に合わせて一部ページを縮小しました' : '');
+  }catch(e){
+    console.error(e);
+    it.status = 'error'; it.outputs = [];
+    it.note = /memory|allocation|Invalid array length|RangeError/i.test(String(e))
+      ? 'メモリが足りませんでした。解像度を下げるか、同時変換数を1にしてもう一度お試しください。'
+      : '変換できませんでした（' + (e && e.message || e) + '）';
+  }finally{
+    if(pdf) pdf.destroy();
+  }
+  paint(it);
+}
+
+async function runQueue(queue){
+  if(running || !queue.length) return;
+  running = true; refresh();
+  const conc = opts().conc;
+  let idx = 0, finished = 0;
+  const update = () => statusEl.textContent = `変換中… ${finished}/${queue.length}件 完了`;
+  update();
+  await Promise.all(Array.from({length: Math.min(conc, queue.length)}, async () => {
+    while(idx < queue.length){ const it = queue[idx++]; await convert(it); finished++; update(); }
+  }));
+  running = false; refresh();
+  const err = queue.filter(i => i.status === 'error').length;
+  statusEl.textContent = err ? `変換が終わりました（${err}件はエラー）` : `${queue.length}件の変換が終わりました。保存してください`;
+}
+
+async function saveItem(it){
+  if(!it.outputs.length) return;
+  if(it.outputs.length === 1){ saveBlob(it.outputs[0].blob, it.outputs[0].name); return; }
+  const zip = new JSZip();
+  it.outputs.forEach(x => zip.file(x.name, x.blob));
+  statusEl.textContent = 'ZIPを作成中…';
+  const blob = await zip.generateAsync({type: 'blob', compression: 'STORE'});
+  saveBlob(blob, baseName(it.file.name) + '_psd.zip');
+  refresh();
+}
+async function saveAllZip(){
+  const done = items.filter(i => i.status === 'done');
+  if(!done.length) return;
+  const zip = new JSZip(), used = new Set();
+  for(const it of done){
+    let folder = baseName(it.file.name), k = 2;
+    while(used.has(folder)) folder = baseName(it.file.name) + '_' + k++;
+    used.add(folder);
+    for(const x of it.outputs) zip.file(done.length === 1 && it.outputs.length === 1 ? x.name : `${folder}/${x.name}`, x.blob);
+  }
+  saveBtn.disabled = true; statusEl.textContent = 'ZIPを作成中…';
+  const blob = await zip.generateAsync({type: 'blob', compression: 'STORE'});
+  saveBlob(blob, 'pdf_to_psd.zip');
+  refresh();
+}
+
+/* ---- イベント ---- */
+if(!window.pdfjsLib){
+  statusEl.textContent = '読み込みに失敗しました。通信状態を確認してページを再読み込みしてください。';
+}
+$('#fileInput').addEventListener('change', e => { addFiles(e.target.files); e.target.value = ''; });
+const drop = $('#drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => { if(!drop.contains(e.target)){ e.preventDefault(); addFiles(e.dataTransfer.files); } });
+document.querySelectorAll('input[name=dpi]').forEach(r => r.addEventListener('change', () => { $('#customRow').hidden = !$('#dpiCustom').checked; items.forEach(paint); }));
+document.querySelectorAll('input[name=color]').forEach(r => r.addEventListener('change', () => { $('#cmykOpt').hidden = !$('#colCmyk').checked; }));
+$('#dpiValue').addEventListener('input', () => items.forEach(paint));
+runBtn.onclick = () => runQueue(items.filter(i => i.status === 'idle' && i.pages));
+saveBtn.onclick = saveAllZip;
+clearBtn.onclick = () => { if(running) return; items = []; listEl.innerHTML = ''; refresh(); };
+refresh();
+</script>
+</body>
+</html>
