@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>PDF・PSD・PNG 一括変換</title>
-<meta name="description" content="PDFとPSD、PNGとPDFを相互変換するブラウザツール。複数ファイルをまとめて変換でき、ファイルは外部に送信されません。">
+<title>PDF・PSD・PNG・JPG 一括変換</title>
+<meta name="description" content="PDFとPSD、PNGとPDFの相互変換、JPGからPDF・PSD・PNGへの変換ができるブラウザツール。複数ファイルをまとめて変換でき、ファイルは外部に送信されません。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
@@ -138,8 +138,8 @@ footer a{color:var(--accent)}
 <body>
 <div class="wrap">
   <header>
-    <span class="ver">v1.3.0</span>
-    <h1>PDF・PSD・PNG 一括変換</h1>
+    <span class="ver">v1.4.0</span>
+    <h1>PDF・PSD・PNG・JPG 一括変換</h1>
     <p class="lead">複数のファイルをまとめて変換できます。ファイルはこの端末の中だけで処理されます。</p>
   </header>
 
@@ -150,6 +150,9 @@ footer a{color:var(--accent)}
       <option value="psd-pdf">PSD → PDF</option>
       <option value="png-pdf">PNG → PDF</option>
       <option value="pdf-png">PDF → PNG</option>
+      <option value="jpg-pdf">JPG → PDF</option>
+      <option value="jpg-psd">JPG → PSD</option>
+      <option value="jpg-png">JPG → PNG</option>
     </select>
     <p id="formatHelp"></p>
   </section>
@@ -176,7 +179,8 @@ footer a{color:var(--accent)}
         <div class="dpirow" id="customRow" hidden>
           <input type="number" id="dpiValue" min="36" max="1200" step="1" value="400" aria-label="解像度（dpi）"><span class="hint">dpi（36〜1200）</span>
         </div>
-        <p class="hint">印刷用は350 dpi、モノクロ線画は600 dpiが目安です。</p>
+        <p class="hint" id="dpiHint">印刷用は350 dpi、モノクロ線画は600 dpiが目安です。</p>
+        <p class="hint" id="dpiNoteJpg" hidden>JPGは画素数をそのまま使い、PSDに解像度の情報だけを書き込みます（印刷サイズが変わります）。</p>
       </div>
       <div class="field">
         <span class="label">カラー</span>
@@ -258,6 +262,7 @@ footer a{color:var(--accent)}
       <li>黒は「スミ（K100%）」と「リッチブラック（CMYK4色を重ねた黒）」から選べます。リッチブラックは黒が深く出ますが、細い文字に使うと版ずれで色がにじみます。おすすめは「ベタ面はリッチブラック、文字・細い線はスミ」です（幅およそ3mm以上の黒ベタだけをリッチブラックにします）。</li>
       <li>リッチブラックの推奨値はC50% M40% Y40% K100%（合計230%）です。CMYK各100%（合計400%）のようにインキが多すぎると、乾きが悪い・PPフィルムが剥がれる・印刷面同士がくっつくなどのトラブルになります。</li>
       <li>スマホ・タブレットは一度に扱える画像の大きさに上限があるため、大きすぎるページは自動で少し縮めて変換します（ファイルの行に表示されます）。</li>
+      <li>JPGからの変換では、スマホで撮った写真の向き（縦・横）を自動で正しく直します。JPG→PDFは画質を落とさずそのまま埋め込みます。</li>
       <li>「全ページを1ファイルにレイヤーで」は、1ページ目のみ表示、他のページは非表示レイヤーとして入ります。</li>
     </ul>
   </details>
@@ -265,6 +270,8 @@ footer a{color:var(--accent)}
   <details>
     <summary>更新履歴</summary>
     <dl class="log">
+      <dt>v1.4.0（2026-11-21）</dt>
+      <dd>JPGからPDF・PSD・PNGへの変換に対応。写真の向きの自動補正、JPG→PSDのCMYK・グレースケール書き出しにも対応。</dd>
       <dt>v1.2.0（2026-10-05）</dt>
       <dd>CMYKの黒の扱いを追加。スミ（K100%）／リッチブラック（初期値C50 M40 Y40 K100）／ベタ面だけリッチブラックから選べるように。</dd>
       <dt>v1.1.0（2026-10-05）</dt>
@@ -276,7 +283,7 @@ footer a{color:var(--accent)}
 
   <footer>
     <span>お問い合わせ：X <a href="https://x.com/H4ru_ycy" target="_blank" rel="noopener">@H4ru_ycy</a></span>
-    <span class="ver">PDF・PSD・PNG 一括変換 v1.3.0</span>
+    <span class="ver">PDF・PSD・PNG・JPG 一括変換 v1.4.0</span>
   </footer>
 </div>
 
@@ -520,7 +527,10 @@ const formats = {
   'pdf-psd': 'PDFの各ページをPSDに変換します。書き出し方法は設定で選べます。',
   'psd-pdf': 'RGBのPSDに保存された合成画像を、1ファイルにつき1ページのPDFにします。',
   'png-pdf': 'PNG画像を、1ファイルにつき1ページのPDFにします。',
-  'pdf-png': 'PDFの各ページをPNGに変換します。複数ページはZIPにまとめます。'
+  'pdf-png': 'PDFの各ページをPNGに変換します。複数ページはZIPにまとめます。',
+  'jpg-pdf': 'JPG画像を、1ファイルにつき1ページのPDFにします。画質はそのままです。',
+  'jpg-psd': 'JPG画像をPSDに変換します。RGB・CMYK・グレースケールを選べます。',
+  'jpg-png': 'JPG画像をPNGに変換します。'
 };
 const MAX_AREA = 16000000;   // スマホのキャンバス上限に余裕を持たせた値
 const MAX_SIDE = 16000;
@@ -534,13 +544,18 @@ function selectedFormat(){
 }
 function updateFormat(){
   const {source, target} = selectedFormat();
-  $('#fileInput').accept = {pdf: '.pdf,application/pdf', png: '.png,image/png', psd: '.psd,image/vnd.adobe.photoshop'}[source];
+  $('#fileInput').accept = {pdf: '.pdf,application/pdf', png: '.png,image/png', psd: '.psd,image/vnd.adobe.photoshop', jpg: '.jpg,.jpeg,image/jpeg'}[source];
   $('#chooseLabel').textContent = source.toUpperCase() + 'を選ぶ';
   $('#formatHelp').textContent = formats[direction.value];
   settingsPanel.hidden = target === 'pdf';
+  const jpg = source === 'jpg';
   for(const field of settingsPanel.querySelectorAll('.field')){
-    field.hidden = target === 'png' && !field.querySelector('input[name=dpi], input[name=bg], input[name=conc]');
+    const has = sel => !!field.querySelector(sel);
+    if(target === 'png') field.hidden = jpg ? !has('input[name=conc]') : !has('input[name=dpi], input[name=bg], input[name=conc]');
+    else field.hidden = jpg && !has('input[name=dpi], input[name=color], input[name=conc]');
   }
+  $('#dpiHint').hidden = jpg;
+  $('#dpiNoteJpg').hidden = !jpg;
 }
 const listEl = $('#list'), emptyEl = $('#empty'), countEl = $('#count'), statusEl = $('#status');
 const runBtn = $('#runAll'), saveBtn = $('#saveAll'), clearBtn = $('#clearAll');
@@ -583,7 +598,7 @@ function updateRich(){
   el.textContent = `合計${sum}%（推奨値：C50 M40 Y40 K100＝230%）` + (sum > tac ? `　※総インキ量の上限${tac}%を超えています` : '');
   el.classList.toggle('warn', sum > tac);
 }
-function baseName(n){ return n.replace(/\.(pdf|png|psd)$/i, '').replace(/[\\/:*?"<>|]/g, '_') || 'document'; }
+function baseName(n){ return n.replace(/\.(pdf|png|psd|jpe?g|jpe)$/i, '').replace(/[\\/:*?"<>|]/g, '_') || 'document'; }
 function fmtBytes(b){ return b < 1024*1024 ? (b/1024).toFixed(0) + ' KB' : (b/1024/1024).toFixed(1) + ' MB'; }
 function fitScale(wPt, hPt, dpi){
   let s = dpi/72, w = wPt*s, h = hPt*s, clamped = false;
@@ -605,13 +620,14 @@ function addFiles(files){
   for(const file of files){
     const extension = file.name.split('.').pop().toLowerCase();
     if(extension !== source && !(source === 'pdf' && file.type === 'application/pdf') &&
-      !(source === 'png' && file.type === 'image/png')) continue;
+      !(source === 'png' && file.type === 'image/png') &&
+      !(source === 'jpg' && (['jpeg', 'jpe'].includes(extension) || file.type === 'image/jpeg'))) continue;
     accepted++;
     const it = {id: ++seq, file, source, target, options: opts(), status: 'idle', pages: null, size1: null, outputs: [], progress: 0, note: '', el: null};
     items.push(it);
     buildRow(it);
     if(source === 'pdf') inspect(it);
-    else it.pages = 1;
+    else { it.pages = 1; if(source === 'jpg') inspectImage(it); }
   }
   refresh();
   if(!accepted && files.length) statusEl.textContent = source.toUpperCase() + 'ファイルを選んでください。';
@@ -660,6 +676,67 @@ async function inspect(it){
   }
   paint(it); refresh();
 }
+/* ---- JPG 読み込み ---- */
+function loadImage(file){
+  return new Promise((resolve, reject) => {
+    const u = URL.createObjectURL(file), img = new Image();
+    img.onload = () => { URL.revokeObjectURL(u); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(u); reject(new Error('JPG画像を読み込めませんでした。')); };
+    img.src = u;
+  });
+}
+/* 向きを反映した状態で白背景のキャンバスに描く（端末の上限を超えるときは縮小） */
+async function decodeImage(file){
+  const img = await loadImage(file);
+  const w0 = img.naturalWidth, h0 = img.naturalHeight;
+  let s = 1, clamped = false;
+  if(w0*h0 > MAX_AREA){ s = Math.sqrt(MAX_AREA/(w0*h0)); clamped = true; }
+  if(Math.max(w0, h0)*s > MAX_SIDE){ s = MAX_SIDE/Math.max(w0, h0); clamped = true; }
+  const w = Math.max(1, Math.floor(w0*s)), h = Math.max(1, Math.floor(h0*s));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d', {willReadFrequently: true});
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+  return {canvas, ctx, w, h, clamped};
+}
+/* EXIFの向き（1〜8）を読む。読めなければ1 */
+function jpegOrientation(buf){
+  try{
+    const v = new DataView(buf);
+    if(v.getUint16(0) !== 0xFFD8) return 1;
+    let o = 2;
+    while(o + 4 <= v.byteLength){
+      const m = v.getUint16(o);
+      if((m & 0xFF00) !== 0xFF00 || m === 0xFFDA) break;
+      const len = v.getUint16(o + 2);
+      if(m === 0xFFE1 && v.getUint32(o + 4) === 0x45786966){
+        const t = o + 10, le = v.getUint16(t) === 0x4949;
+        const ifd = t + v.getUint32(t + 4, le), n = v.getUint16(ifd, le);
+        for(let i = 0; i < n; i++){
+          const e = ifd + 2 + i*12;
+          if(v.getUint16(e, le) === 0x0112){ const r = v.getUint16(e + 8, le); return r >= 1 && r <= 8 ? r : 1; }
+        }
+        return 1;
+      }
+      o += 2 + len;
+    }
+  }catch(e){}
+  return 1;
+}
+async function inspectImage(it){
+  try{
+    const img = await loadImage(it.file);
+    it.imgSize = {w: img.naturalWidth, h: img.naturalHeight};
+    const c = it.el.querySelector('.thumb canvas');
+    const k = 110 / Math.max(it.imgSize.w, it.imgSize.h);
+    c.width = Math.max(1, Math.round(it.imgSize.w*k)); c.height = Math.max(1, Math.round(it.imgSize.h*k));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  }catch(e){
+    it.status = 'error'; it.note = 'JPGを読み込めませんでした。破損したファイルや対応していない形式の可能性があります。';
+  }
+  paint(it); refresh();
+}
 function paint(it){
   const el = it.el; if(!el) return;
   const o = it.target === selectedFormat().target ? opts() : it.options;
@@ -668,6 +745,11 @@ function paint(it){
     const f = fitScale(it.size1.w, it.size1.h, o.dpi);
     const mm = v => Math.round(v / 72 * 25.4);
     el.querySelector('.m-px').textContent = `${mm(it.size1.w)}×${mm(it.size1.h)}mm → ${f.w}×${f.h}px` + (f.clamped ? '（縮小）' : '');
+  }else if(it.imgSize){
+    const {w, h} = it.imgSize, big = w*h > MAX_AREA || Math.max(w, h) > MAX_SIDE;
+    const mm = v => Math.round(v / o.dpi * 25.4);
+    el.querySelector('.m-px').textContent = `${w}×${h}px` + (it.target === 'psd' ? `（${o.dpi} dpiで${mm(w)}×${mm(h)}mm）` : '')
+      + (big && it.target !== 'pdf' ? '（縮小）' : '');
   }
   const chip = el.querySelector('.chip');
   const label = {idle: '待機中', run: '変換中', done: '完了', error: 'エラー'}[it.status];
@@ -713,6 +795,7 @@ function canvasPng(canvas){
 async function imageToPdf(it){
   if(!window.PDFLib) throw new Error('PDF書き出し機能を読み込めませんでした。');
   let bytes = await it.file.arrayBuffer();
+  if(it.source === 'jpg') return jpgToPdf(bytes, it.file);
   if(it.source === 'psd'){
     if(!window.agPsd) throw new Error('PSD読み込み機能を読み込めませんでした。');
     const psd = agPsd.readPsd(bytes, {skipLayerImageData: true, skipThumbnail: true});
@@ -729,6 +812,33 @@ async function imageToPdf(it){
   const width = image.width * scale, height = image.height * scale;
   const page = doc.addPage([width, height]);
   page.drawImage(image, {x: 0, y: 0, width, height});
+  return new Blob([await doc.save()], {type: 'application/pdf'});
+}
+
+async function jpgToPdf(bytes, file){
+  const {PDFDocument, degrees} = PDFLib;
+  const doc = await PDFDocument.create();
+  let ori = jpegOrientation(bytes), image;
+  if([1, 3, 6, 8].includes(ori)){
+    try{ image = await doc.embedJpg(bytes); }catch(e){ image = null; }
+  }
+  if(!image){
+    // 鏡像の向き・埋め込めないJPGは、描き直してから埋め込む
+    const r = await decodeImage(file);
+    try{
+      const blob = await new Promise((res, rej) => r.canvas.toBlob(b => b ? res(b) : rej(new Error('JPG画像を作成できませんでした。')), 'image/jpeg', 0.95));
+      image = await doc.embedJpg(await blob.arrayBuffer());
+    }finally{ r.canvas.width = r.canvas.height = 0; }
+    ori = 1;
+  }
+  const scale = Math.min(72 / 96, 14400 / Math.max(image.width, image.height));
+  const iw = image.width * scale, ih = image.height * scale;
+  const side = ori === 6 || ori === 8;
+  const pw = side ? ih : iw, ph = side ? iw : ih;
+  const page = doc.addPage([pw, ph]);
+  // PDFの回転は左下を中心に反時計回り
+  const place = {1: {x: 0, y: 0, r: 0}, 3: {x: pw, y: ph, r: 180}, 6: {x: 0, y: ph, r: -90}, 8: {x: pw, y: 0, r: 90}}[ori];
+  page.drawImage(image, {x: place.x, y: place.y, width: iw, height: ih, rotate: degrees(place.r)});
   return new Blob([await doc.save()], {type: 'application/pdf'});
 }
 
@@ -763,6 +873,29 @@ async function convert(it){
       it.outputs.push({name: base + '.pdf', blob});
       it.status = 'done';
       it.note = fmtBytes(blob.size);
+      return;
+    }
+    if(it.source === 'jpg'){
+      it.cur = 1; paint(it); await tick();
+      const r = await decodeImage(it.file);
+      let blob;
+      try{
+        if(it.target === 'png'){
+          blob = await canvasPng(r.canvas);
+        }else{
+          const rgba = r.ctx.getImageData(0, 0, r.w, r.h).data;
+          const planes = colorPlanes(rgba, r.w, r.h, o.color, o.dpi);
+          const parts = buildPSD({W: r.w, H: r.h, mode: o.color.mode, transparent: false, dpi: o.dpi,
+            layers: [{name: '画像', ascii: 'Image', w: r.w, h: r.h, channels: encodeLayer(rgba, planes, r.w, r.h), hidden: false}],
+            composite: encodeComposite(rgba, planes, r.w, r.h, r.w, r.h, false)});
+          blob = new Blob(parts, {type: 'image/vnd.adobe.photoshop'});
+        }
+      }finally{ r.canvas.width = r.canvas.height = 0; }
+      it.outputs.push({name: `${base}.${it.target}`, blob});
+      it.progress = 1;
+      it.status = 'done';
+      it.note = fmtBytes(blob.size) + (it.target === 'psd' ? `（${o.dpi} dpi・${colorLabel(o.color)}）` : '')
+        + (r.clamped ? '　※端末の上限に合わせて縮小しました' : '');
       return;
     }
     pdf = await pdfjsLib.getDocument({data: await it.file.arrayBuffer(), isEvalSupported: false, cMapUrl: PDFJS + 'cmaps/', cMapPacked: true, standardFontDataUrl: PDFJS + 'standard_fonts/'}).promise;
