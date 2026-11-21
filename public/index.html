@@ -138,7 +138,7 @@ footer a{color:var(--accent)}
 <body>
 <div class="wrap">
   <header>
-    <span class="ver">v1.4.0</span>
+    <span class="ver">v1.5.0</span>
     <h1>PDF・PSD・PNG・JPG 一括変換</h1>
     <p class="lead">複数のファイルをまとめて変換できます。ファイルはこの端末の中だけで処理されます。</p>
   </header>
@@ -186,9 +186,10 @@ footer a{color:var(--accent)}
         <span class="label">カラー</span>
         <div class="seg">
           <label><input type="radio" name="color" value="rgb" id="colRgb" checked><span>RGBカラー</span></label>
-          <label><input type="radio" name="color" value="cmyk" id="colCmyk"><span>CMYKカラー</span></label>
+          <label id="cmykChoice"><input type="radio" name="color" value="cmyk" id="colCmyk"><span>CMYKカラー</span></label>
           <label><input type="radio" name="color" value="gray" id="colGray"><span>グレースケール</span></label>
         </div>
+        <p class="hint" id="grayHint" hidden>白（0%）から黒（100%）までの明暗を、256階調（白と黒の間は254階調のグレー）の8ビット白黒画像で書き出します。</p>
         <div class="cmykopt" id="cmykOpt" hidden>
           <span class="label">黒の扱い</span>
           <div class="seg seg-col">
@@ -262,6 +263,7 @@ footer a{color:var(--accent)}
       <li>黒は「スミ（K100%）」と「リッチブラック（CMYK4色を重ねた黒）」から選べます。リッチブラックは黒が深く出ますが、細い文字に使うと版ずれで色がにじみます。おすすめは「ベタ面はリッチブラック、文字・細い線はスミ」です（幅およそ3mm以上の黒ベタだけをリッチブラックにします）。</li>
       <li>リッチブラックの推奨値はC50% M40% Y40% K100%（合計230%）です。CMYK各100%（合計400%）のようにインキが多すぎると、乾きが悪い・PPフィルムが剥がれる・印刷面同士がくっつくなどのトラブルになります。</li>
       <li>スマホ・タブレットは一度に扱える画像の大きさに上限があるため、大きすぎるページは自動で少し縮めて変換します（ファイルの行に表示されます）。</li>
+      <li>グレースケールは、白（0%）から黒（100%）までを256階調（白と黒の間は254階調のグレー）で表す8ビットの白黒画像になります。PSDはグレースケールモード、PNGは白黒PNG、PDFは白黒（DeviceGray）の画像として保存します。</li>
       <li>JPGからの変換では、スマホで撮った写真の向き（縦・横）を自動で正しく直します。JPG→PDFは画質を落とさずそのまま埋め込みます。</li>
       <li>「全ページを1ファイルにレイヤーで」は、1ページ目のみ表示、他のページは非表示レイヤーとして入ります。</li>
     </ul>
@@ -270,6 +272,8 @@ footer a{color:var(--accent)}
   <details>
     <summary>更新履歴</summary>
     <dl class="log">
+      <dt>v1.5.0（2026-11-21）</dt>
+      <dd>PNG・PDFへの書き出しでもグレースケールを選べるように。白（0%）〜黒（100%）を256階調（間のグレー254階調）の8ビット白黒画像で書き出します。</dd>
       <dt>v1.4.0（2026-11-21）</dt>
       <dd>JPGからPDF・PSD・PNGへの変換に対応。写真の向きの自動補正、JPG→PSDのCMYK・グレースケール書き出しにも対応。</dd>
       <dt>v1.2.0（2026-10-05）</dt>
@@ -283,7 +287,7 @@ footer a{color:var(--accent)}
 
   <footer>
     <span>お問い合わせ：X <a href="https://x.com/H4ru_ycy" target="_blank" rel="noopener">@H4ru_ycy</a></span>
-    <span class="ver">PDF・PSD・PNG・JPG 一括変換 v1.4.0</span>
+    <span class="ver">PDF・PSD・PNG・JPG 一括変換 v1.5.0</span>
   </footer>
 </div>
 
@@ -547,13 +551,18 @@ function updateFormat(){
   $('#fileInput').accept = {pdf: '.pdf,application/pdf', png: '.png,image/png', psd: '.psd,image/vnd.adobe.photoshop', jpg: '.jpg,.jpeg,image/jpeg'}[source];
   $('#chooseLabel').textContent = source.toUpperCase() + 'を選ぶ';
   $('#formatHelp').textContent = formats[direction.value];
-  settingsPanel.hidden = target === 'pdf';
+  settingsPanel.hidden = false;
   const jpg = source === 'jpg';
   for(const field of settingsPanel.querySelectorAll('.field')){
     const has = sel => !!field.querySelector(sel);
-    if(target === 'png') field.hidden = jpg ? !has('input[name=conc]') : !has('input[name=dpi], input[name=bg], input[name=conc]');
+    if(target === 'pdf') field.hidden = !has('input[name=color], input[name=conc]');
+    else if(target === 'png') field.hidden = jpg ? !has('input[name=color], input[name=conc]') : !has('input[name=dpi], input[name=bg], input[name=color], input[name=conc]');
     else field.hidden = jpg && !has('input[name=dpi], input[name=color], input[name=conc]');
   }
+  // CMYKはPSDのときだけ。PNG・PDFはRGBかグレースケール
+  $('#cmykChoice').hidden = target !== 'psd';
+  if(target !== 'psd' && $('#colCmyk').checked) $('#colRgb').checked = true;
+  updateColorUI();
   $('#dpiHint').hidden = jpg;
   $('#dpiNoteJpg').hidden = !jpg;
 }
@@ -584,8 +593,12 @@ function richValues(){
   const v = id => { const n = parseInt($(id).value, 10); return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0; };
   return {c: v('#rbC'), m: v('#rbM'), y: v('#rbY'), k: v('#rbK')};
 }
+function updateColorUI(){
+  $('#cmykOpt').hidden = !$('#colCmyk').checked;
+  $('#grayHint').hidden = !$('#colGray').checked;
+}
 function colorLabel(c){
-  if(c.mode !== 'cmyk') return c.mode === 'gray' ? 'グレー' : 'RGB';
+  if(c.mode !== 'cmyk') return c.mode === 'gray' ? 'グレースケール256階調' : 'RGB';
   const r = c.rich, rb = `C${r.c} M${r.m} Y${r.y} K${r.k}`;
   const b = {k: '黒はスミK100', rich: `黒はリッチブラック${rb}`, auto: `ベタはリッチブラック${rb}・文字はスミ`}[c.black];
   return `CMYK・${b}・総インキ${c.tac}%`;
@@ -681,7 +694,7 @@ function loadImage(file){
   return new Promise((resolve, reject) => {
     const u = URL.createObjectURL(file), img = new Image();
     img.onload = () => { URL.revokeObjectURL(u); resolve(img); };
-    img.onerror = () => { URL.revokeObjectURL(u); reject(new Error('JPG画像を読み込めませんでした。')); };
+    img.onerror = () => { URL.revokeObjectURL(u); reject(new Error('画像を読み込めませんでした。')); };
     img.src = u;
   });
 }
@@ -698,7 +711,7 @@ async function decodeImage(file){
   const ctx = canvas.getContext('2d', {willReadFrequently: true});
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
   ctx.drawImage(img, 0, 0, w, h);
-  return {canvas, ctx, w, h, clamped};
+  return {canvas, ctx, w, h, w0, h0, clamped};
 }
 /* EXIFの向き（1〜8）を読む。読めなければ1 */
 function jpegOrientation(buf){
@@ -792,8 +805,96 @@ function canvasPng(canvas){
   ));
 }
 
-async function imageToPdf(it){
+/* ---- グレースケール（8ビット・256階調：255＝白0%、0＝黒100%） ---- */
+function toGray(rgba, n){
+  const g = new Uint8Array(n);
+  for(let i = 0, j = 0; i < n; i++, j += 4) g[i] = (rgba[j]*77 + rgba[j+1]*150 + rgba[j+2]*29 + 128) >> 8;
+  return g;
+}
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for(let n = 0; n < 256; n++){ let c = n; for(let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(parts){
+  let c = 0xFFFFFFFF;
+  for(const a of parts) for(let i = 0; i < a.length; i++) c = CRC_TABLE[(c ^ a[i]) & 255] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+async function zlibDeflate(raw){
+  if(window.CompressionStream){
+    try{
+      const cs = new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate'));
+      return new Uint8Array(await new Response(cs).arrayBuffer());
+    }catch(e){}
+  }
+  return PDFLib.PDFContext.create().flateStream(raw).getContents();
+}
+/* 8ビットのグレースケールPNG（alphaがあればグレー＋透明） */
+async function encodeGrayPng(rgba, w, h, withAlpha){
+  const n = w*h, gray = toGray(rgba, n), bpp = withAlpha ? 2 : 1, stride = w*bpp;
+  const raw = new Uint8Array((stride + 1) * h);
+  const row = new Uint8Array(stride);
+  for(let y = 0; y < h; y++){
+    for(let x = 0; x < w; x++){
+      const p = y*w + x;
+      if(withAlpha){ row[x*2] = gray[p]; row[x*2+1] = rgba[p*4+3]; } else row[x] = gray[p];
+    }
+    const o = y*(stride + 1);
+    raw[o] = 1; // Subフィルター
+    for(let i = 0; i < stride; i++) raw[o+1+i] = (row[i] - (i >= bpp ? row[i-bpp] : 0)) & 255;
+  }
+  const idat = await zlibDeflate(raw);
+  const chunk = (type, data) => {
+    const head = new Uint8Array(8), tail = new Uint8Array(4), dv = new DataView(head.buffer);
+    dv.setUint32(0, data.length);
+    const t = new Uint8Array([...type].map(c => c.charCodeAt(0)));
+    head.set(t, 4);
+    new DataView(tail.buffer).setUint32(0, crc32([t, data]));
+    return [head, data, tail];
+  };
+  const ihdr = new Uint8Array(13), dv = new DataView(ihdr.buffer);
+  dv.setUint32(0, w); dv.setUint32(4, h); ihdr[8] = 8; ihdr[9] = withAlpha ? 4 : 0;
+  return new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), ...chunk('IHDR', ihdr), ...chunk('IDAT', idat), ...chunk('IEND', new Uint8Array(0))], {type: 'image/png'});
+}
+/* 白背景に合成したRGBAから、DeviceGray（8ビット）の1ページPDFを作る */
+function grayPdf(rgba, w, h, pageW, pageH){
+  const {PDFDocument, pushGraphicsState, concatTransformationMatrix, drawObject, popGraphicsState} = PDFLib;
+  return PDFDocument.create().then(async doc => {
+    const ref = doc.context.register(doc.context.flateStream(toGray(rgba, w*h),
+      {Type: 'XObject', Subtype: 'Image', Width: w, Height: h, ColorSpace: 'DeviceGray', BitsPerComponent: 8}));
+    const page = doc.addPage([pageW, pageH]);
+    const name = page.node.newXObject('Im', ref);
+    page.pushOperators(pushGraphicsState(), concatTransformationMatrix(pageW, 0, 0, pageH, 0, 0), drawObject(name), popGraphicsState());
+    return new Blob([await doc.save()], {type: 'application/pdf'});
+  });
+}
+async function imageToPdfGray(it){
+  let canvas, w0, h0, r;
+  if(it.source === 'psd'){
+    if(!window.agPsd) throw new Error('PSD読み込み機能を読み込めませんでした。');
+    const psd = agPsd.readPsd(await it.file.arrayBuffer(), {skipLayerImageData: true, skipThumbnail: true});
+    if(!psd.canvas) throw new Error('PSDに合成画像がありません。互換性を優先して保存し直してください。');
+    w0 = psd.canvas.width; h0 = psd.canvas.height;
+    canvas = document.createElement('canvas'); canvas.width = w0; canvas.height = h0;
+    const ctx = canvas.getContext('2d', {willReadFrequently: true});
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w0, h0); ctx.drawImage(psd.canvas, 0, 0);
+    psd.canvas.width = psd.canvas.height = 0;
+    r = {canvas, ctx, w: w0, h: h0};
+  }else{
+    r = await decodeImage(it.file);
+    w0 = r.w0; h0 = r.h0;
+  }
+  try{
+    const scale = Math.min(72 / 96, 14400 / Math.max(w0, h0));
+    const rgba = r.ctx.getImageData(0, 0, r.w, r.h).data;
+    return await grayPdf(rgba, r.w, r.h, w0*scale, h0*scale);
+  }finally{ r.canvas.width = r.canvas.height = 0; }
+}
+
+async function imageToPdf(it, gray){
   if(!window.PDFLib) throw new Error('PDF書き出し機能を読み込めませんでした。');
+  if(gray) return imageToPdfGray(it);
   let bytes = await it.file.arrayBuffer();
   if(it.source === 'jpg') return jpgToPdf(bytes, it.file);
   if(it.source === 'psd'){
@@ -869,10 +970,11 @@ async function convert(it){
   try{
     if(it.target === 'pdf'){
       it.cur = 1;
-      const blob = await imageToPdf(it);
+      const gray = o.color.mode === 'gray';
+      const blob = await imageToPdf(it, gray);
       it.outputs.push({name: base + '.pdf', blob});
       it.status = 'done';
-      it.note = fmtBytes(blob.size);
+      it.note = fmtBytes(blob.size) + (gray ? '（グレースケール256階調）' : '');
       return;
     }
     if(it.source === 'jpg'){
@@ -881,7 +983,9 @@ async function convert(it){
       let blob;
       try{
         if(it.target === 'png'){
-          blob = await canvasPng(r.canvas);
+          blob = o.color.mode === 'gray'
+            ? await encodeGrayPng(r.ctx.getImageData(0, 0, r.w, r.h).data, r.w, r.h, false)
+            : await canvasPng(r.canvas);
         }else{
           const rgba = r.ctx.getImageData(0, 0, r.w, r.h).data;
           const planes = colorPlanes(rgba, r.w, r.h, o.color, o.dpi);
@@ -894,7 +998,7 @@ async function convert(it){
       it.outputs.push({name: `${base}.${it.target}`, blob});
       it.progress = 1;
       it.status = 'done';
-      it.note = fmtBytes(blob.size) + (it.target === 'psd' ? `（${o.dpi} dpi・${colorLabel(o.color)}）` : '')
+      it.note = fmtBytes(blob.size) + (it.target === 'psd' ? `（${o.dpi} dpi・${colorLabel(o.color)}）` : o.color.mode === 'gray' ? '（グレースケール256階調）' : '')
         + (r.clamped ? '　※端末の上限に合わせて縮小しました' : '');
       return;
     }
@@ -904,9 +1008,11 @@ async function convert(it){
     if(it.target === 'png'){
       for(let n = 1; n <= N; n++){
         it.cur = n; paint(it); await tick();
-        const r = await renderPage(pdf, n, o.dpi, o.transparent, true);
+        const gray = o.color.mode === 'gray';
+        const r = await renderPage(pdf, n, o.dpi, o.transparent, !gray);
         clamped ||= r.clamped;
-        it.outputs.push({name: base + '_p' + String(n).padStart(digits, '0') + '.png', blob: r.data});
+        const blob = gray ? await encodeGrayPng(r.data, r.w, r.h, o.transparent) : r.data;
+        it.outputs.push({name: base + '_p' + String(n).padStart(digits, '0') + '.png', blob});
         it.progress = n / N; paint(it);
       }
     }else if(o.layout === 'pages'){
@@ -943,7 +1049,7 @@ async function convert(it){
     }
     const total = it.outputs.reduce((s, x) => s + x.blob.size, 0);
     it.status = 'done';
-    it.note = `${it.outputs.length}ファイル・合計 ${fmtBytes(total)}（${o.dpi} dpi・${it.target === 'psd' ? colorLabel(o.color) + '・' : ''}背景${o.transparent ? '透明' : '白'}）`
+    it.note = `${it.outputs.length}ファイル・合計 ${fmtBytes(total)}（${o.dpi} dpi・${it.target === 'psd' || o.color.mode === 'gray' ? colorLabel(o.color) + '・' : ''}背景${o.transparent ? '透明' : '白'}）`
       + (clamped ? '　※端末の上限に合わせて一部ページを縮小しました' : '');
   }catch(e){
     console.error(e);
@@ -1025,7 +1131,7 @@ direction.addEventListener('change', () => {
   refresh();
 });
 updateFormat();
-document.querySelectorAll('input[name=color]').forEach(r => r.addEventListener('change', () => { $('#cmykOpt').hidden = !$('#colCmyk').checked; }));
+document.querySelectorAll('input[name=color]').forEach(r => r.addEventListener('change', updateColorUI));
 $('#dpiValue').addEventListener('input', () => items.forEach(paint));
 runBtn.onclick = () => runQueue(items.filter(i => i.status === 'idle' && i.pages));
 saveBtn.onclick = saveAllZip;
